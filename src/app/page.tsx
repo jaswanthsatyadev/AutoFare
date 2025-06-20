@@ -1,9 +1,9 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useActionState } from "react";
 import Image from "next/image";
-import { useFormState, useFormStatus } from "react-dom";
+import { useFormStatus } from "react-dom";
 import { processVerification, type VerificationResult } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,7 +37,7 @@ function ActualSubmitButton({ disabled }: { disabled?: boolean }) {
 }
 
 export default function HomePage() {
-  const [state, formAction] = useFormState(processVerification, initialState);
+  const [state, formAction] = useActionState(processVerification, initialState);
   const { toast } = useToast();
 
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
@@ -139,7 +139,7 @@ export default function HomePage() {
       const ctx = canvas.getContext('2d');
 
       if (!ctx) {
-          toast({ variant: "destructive", title: "Capture Error", description: "Could not process video frame." });
+          toast({ variant: "destructive", title: "CaptureError", description: "Could not process video frame." });
           event.preventDefault();
           return;
       }
