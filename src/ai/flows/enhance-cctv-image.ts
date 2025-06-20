@@ -14,6 +14,9 @@ import {z} from 'genkit';
 const EnhanceCctvImageInputSchema = z.object({
   cctvImageDataUri: z
     .string()
+    .refine(val => val.startsWith('data:image/'), {
+      message: "CCTV image must be a valid image data URI starting with 'data:image/'."
+    })
     .describe(
       "The CCTV image data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
@@ -30,48 +33,37 @@ const EnhanceCctvImageOutputSchema = z.object({
 export type EnhanceCctvImageOutput = z.infer<typeof EnhanceCctvImageOutputSchema>;
 
 export async function enhanceCctvImage(input: EnhanceCctvImageInput): Promise<EnhanceCctvImageOutput> {
-  return enhanceCctvImageFlow(input);
+  // Validate input explicitly here before calling the flow,
+  // though defineFlow also validates against its inputSchema.
+  const validatedInput = EnhanceCctvImageInputSchema.parse(input);
+  return enhanceCctvImageFlow(validatedInput);
 }
-
-// This definedPrompt object handles the model, config, and templating for image enhancement.
-const enhanceCctvImagePrompt = ai.definePrompt({
-  name: 'enhanceCctvImagePrompt',
-  model: 'googleai/gemini-2.0-flash-exp', // Explicitly use the image generation model
-  input: {schema: EnhanceCctvImageInputSchema},
-  output: {schema: EnhanceCctvImageOutputSchema}, // Describes expected text output structure, if any.
-  prompt: [ // Array of prompt parts
-    {media: {url: '{{{cctvImageDataUri}}}'}}, // Input image, templated
-    {
-      text: `Enhance the quality of the provided CCTV image. Focus on improving brightness and contrast, reducing noise, and sharpening details to make features more discernible. Return the enhanced image.`,
-    },
-  ],
-  config: {
-    responseModalities: ['TEXT', 'IMAGE'], // Expect both text and image in response
-  },
-});
 
 const enhanceCctvImageFlow = ai.defineFlow(
   {
     name: 'enhanceCctvImageFlow',
     inputSchema: EnhanceCctvImageInputSchema,
-    outputSchema: EnhanceCctvImageOutputSchema, // The flow will return data matching this schema.
+    outputSchema: EnhanceCctvImageOutputSchema,
   },
   async (input: EnhanceCctvImageInput): Promise<EnhanceCctvImageOutput> => {
-    // Call the defined prompt. Genkit handles templating and calling ai.generate internally.
-    const response = await enhanceCctvImagePrompt(input);
+    const {media} = await ai.generate({
+      model: 'googleai/gemini-2.0-flash-exp',
+      prompt: [
+        {media: {url: input.cctvImageDataUri}}, // Pass the data URI directly
+        {
+          text: `Enhance the quality of the provided CCTV image. Focus on improving brightness and contrast, reducing noise, and sharpening details to make features more discernible. Return the enhanced image.`,
+        },
+      ],
+      config: {
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
+    });
 
-    // The primary output for image generation is in response.media.url
-    if (response.media?.url) {
-      return { enhancedCctvImageDataUri: response.media.url };
+    if (media?.url) {
+      return { enhancedCctvImageDataUri: media.url };
     }
     
-    // Fallback or error if media URL is not present
-    console.error("Enhanced image media URL is missing in AI response. Response:", JSON.stringify(response));
-    if (response.output?.enhancedCctvImageDataUri) {
-      // If model somehow put data URI in text output field (less likely for this setup)
-      return { enhancedCctvImageDataUri: response.output.enhancedCctvImageDataUri };
-    }
-    
+    console.error("Enhanced image media URL is missing in AI response. Full response object might give clues if generate call succeeded but returned unexpected structure.");
     throw new Error('Failed to generate enhanced image: No media URL found in AI response.');
   }
 );
