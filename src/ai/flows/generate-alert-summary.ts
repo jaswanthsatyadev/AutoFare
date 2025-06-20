@@ -41,35 +41,41 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateAlertSummaryOutputSchema},
   prompt: `You are a senior security analyst specialized in face verification systems.
 
-Task: Analyze a selfie and a separate CCTV image to determine *if the selfie face matches any face in the CCTV image*.
+Task: Analyze a selfie and a separate CCTV image to determine *if the selfie face matches any face in the CCTV image*. Your analysis should be discerning, aiming for a balance between robustness to superficial changes and sensitivity to genuine structural differences.
 
 IMPORTANT: The CCTV image may contain multiple people.
 
-Your goal is to compare the user's selfie against **each individual face** in the CCTV image. If **even one face** appears to structurally match the selfie, assume it is the **same person**.
+Your goal is to compare the user's selfie against **each individual face** in the CCTV image.
 
-✅ Consider the verification **successful** if:
-- Any one face has a strong structural resemblance to the selfie face.
+✅ Consider the verification **successful** if, and only if:
+- At least one face in the CCTV image demonstrates a **clear and convincing structural match** to the selfie. This means key facial landmarks (like eye spacing, nose shape relative to other features, jawline contour, and overall facial proportions) align well, beyond what could be explained by minor variations.
 
-❌ Only declare a failure if:
-- **None** of the faces match the selfie in terms of fundamental facial geometry (eye spacing, facial contours, jawline, etc.)
+❌ Declare a failure if:
+- After comparing with all faces in the CCTV image, **no single face** meets the "clear and convincing structural match" criteria.
+- OR, if even the closest-looking face in the CCTV exhibits **at least one significant and undeniable structural difference** from the selfie that cannot be attributed to superficial factors (listed below).
 
 You must check all visible faces individually before making a decision.
 
-⚠️ **Ignore** all superficial variations for each comparison:
+⚠️ **Ignore** these superficial variations for each comparison:
 - Lighting, shadows, exposure differences
 - Facial expressions (smile, frown, open/closed mouth)
 - Skin tone shifts (due to light or color)
-- Hairstyles, hats, glasses, accessories
-- Facial hair changes (other than radical transformations)
+- Hairstyles, hats, glasses, non-obscuring accessories
+- Typical facial hair changes (e.g., growth of a beard, stubble vs. clean-shaven is acceptable unless it radically alters the visible jawline structure).
 
-🧠 Focus only on major, structural facial differences that conclusively indicate two different people for any given comparison — such as fundamentally different face shape, eye spacing, nose structure, jawline, ear shape, or relative positioning of fixed facial landmarks.
+🧠 Focus primarily on **persistent, underlying facial geometry**. Look for differences in:
+- Overall face shape (e.g., round vs. oval vs. square, if distinctly different)
+- Relative spacing and proportions of eyes, nose, and mouth
+- Fundamental nose structure (e.g., bridge width, tip shape, nostril flare, if clearly different)
+- Jawline and chin contour (if not obscured and demonstrably different)
+- Ear shape and placement (if visible and clearly distinct)
 
 Output:
 1.  Output **one single sentence** (no bullet points, no extra text).
-2.  If a match is found with any face in the CCTV image, respond: “Likely the same person.”
-3.  If no match is found after checking all faces, state the most likely structural reason the person is not found (e.g., “No individual in the CCTV image shares the same distinct jawline as the selfie.”).
+2.  If a match is found according to the criteria above, respond: “Likely the same person.”
+3.  If no match is found, state the most prominent structural difference that led to this conclusion (e.g., “No individual in the CCTV image shares the same fundamental nose structure as the selfie.” or “The relative eye spacing in the selfie does not match any individual in the CCTV footage.”).
 
-Avoid discussing lighting, expression, or appearance-based changes unless they strongly alter **fixed facial geometry**.
+Avoid vague statements. Be specific about the structural reason for failure if applicable.
 
 Selfie: {{media url=selfieDataUri}}
 CCTV Image: {{media url=cctvDataUri}}
@@ -92,4 +98,3 @@ const generateAlertSummaryFlow = ai.defineFlow(
     return output;
   }
 );
-
