@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { generateAlertSummary } from "@/ai/flows/generate-alert-summary";
-import type { GenerateAlertSummaryInput } from "@/ai/flows/generate-alert-summary";
+import type { GenerateAlertSummaryInput, GenerateAlertSummaryOutput } from "@/ai/flows/generate-alert-summary";
 import { enhanceCctvImage } from "@/ai/flows/enhance-cctv-image";
 import type { EnhanceCctvImageInput } from "@/ai/flows/enhance-cctv-image";
 
@@ -16,6 +16,8 @@ export type VerificationResult =
   | { status: "verified"; message: string }
   | { status: "failed"; summary: string; enhancedImageUri: string; message: string }
   | { status: "error"; message: string };
+
+const SUCCESS_SUMMARY = "Likely the same person.";
 
 export async function processVerification(
   prevState: any,
@@ -57,26 +59,24 @@ export async function processVerification(
 
   const { selfieDataUri: validSelfieDataUri, cctvDataUri: validCctvDataUri } = validatedFields.data;
 
-  // Increased probability for a match to simulate more lenient verification
-  const isMatch = Math.random() < 0.7; 
+  try {
+    const alertSummaryInput: GenerateAlertSummaryInput = {
+      selfieDataUri: validSelfieDataUri,
+      cctvDataUri: validCctvDataUri,
+    };
+    const alertSummaryOutput: GenerateAlertSummaryOutput = await generateAlertSummary(alertSummaryInput);
 
-  if (isMatch) {
-    console.log("Verification successful. Updating Firebase.");
-    return { status: "verified", message: "Identity verified successfully." };
-  } else {
-    try {
-      const alertSummaryInput: GenerateAlertSummaryInput = {
-        selfieDataUri: validSelfieDataUri,
-        cctvDataUri: validCctvDataUri,
-      };
-      const alertSummaryOutput = await generateAlertSummary(alertSummaryInput);
-
+    if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
+      console.log("Verification successful based on AI summary. Updating Firebase.");
+      return { status: "verified", message: "Identity verified successfully." };
+    } else {
+      // AI indicates a mismatch, proceed to enhance image and report failure
       const enhanceCctvImageInput: EnhanceCctvImageInput = {
         cctvImageDataUri: validCctvDataUri,
       };
       const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
       
-      console.log("Verification failed. Logging alert and sending FCM.");
+      console.log("Verification failed based on AI summary. Logging alert and sending FCM.");
 
       return {
         status: "failed",
@@ -84,11 +84,10 @@ export async function processVerification(
         enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
         message: "Identity verification failed.",
       };
-    } catch (error) {
-      console.error("Error during AI processing or simulated backend tasks:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during AI processing.";
-      return { status: "error", message: `Failed to get AI insights: ${errorMessage}` };
     }
+  } catch (error) {
+    console.error("Error during AI processing or backend tasks:", error);
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during AI processing.";
+    return { status: "error", message: `Failed to get AI insights: ${errorMessage}` };
   }
 }
-
