@@ -3,7 +3,11 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateAlertSummary, type GenerateAlertSummaryInput, type GenerateAlertSummaryOutput } from "@/ai/flows/generate-alert-summary";
 import { enhanceCctvImage, type EnhanceCctvImageInput } from "@/ai/flows/enhance-cctv-image";
-import type { VerificationResult } from "@/app/actions"; // Re-using the type from actions
+import type { VerificationResult } from "@/app/actions";
+
+// In-memory store for the last received selfie for page.tsx to pick up
+// In a real application, you might use a more robust solution like a database, Redis, or a message queue.
+export let lastReceivedSelfieForPage: string | null = null;
 
 const ReceivePhotoInputSchema = z.object({
   selfieDataUri: z.string().startsWith('data:image/', { message: "Selfie image data must be a valid data URI." }),
@@ -12,9 +16,8 @@ const ReceivePhotoInputSchema = z.object({
 
 const SUCCESS_SUMMARY = "Verified successful: The same person is present in both images.";
 
-// Common headers for CORS
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // Allow all origins
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
@@ -51,6 +54,9 @@ export async function POST(request: NextRequest) {
 
     const { selfieDataUri, cctvDataUri } = validatedFields.data;
 
+    // Store the selfie for page.tsx to pick up
+    lastReceivedSelfieForPage = selfieDataUri;
+
     try {
       const alertSummaryInput: GenerateAlertSummaryInput = {
         selfieDataUri: selfieDataUri,
@@ -59,27 +65,24 @@ export async function POST(request: NextRequest) {
       const alertSummaryOutput: GenerateAlertSummaryOutput = await generateAlertSummary(alertSummaryInput);
 
       if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
-        // console.log("Verification successful via API based on AI summary.");
         return NextResponse.json(
           { status: "verified", message: "Identity verified successfully via API." } satisfies VerificationResult,
           { status: 200, headers: corsHeaders }
         );
       } else {
-        // AI indicates a mismatch or uncertainty
         const enhanceCctvImageInput: EnhanceCctvImageInput = {
           cctvImageDataUri: cctvDataUri,
         };
         const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
         
-        // console.log("Verification failed or uncertain via API based on AI summary.");
         return NextResponse.json(
           {
             status: "failed",
-            summary: alertSummaryOutput.summary, // This will be "No matching person..." or "Unable to determine..."
+            summary: alertSummaryOutput.summary,
             enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
             message: "Identity verification did not confirm a match via API.",
           } satisfies VerificationResult,
-          { status: 200, headers: corsHeaders } // Still 200 OK as the API processed the request
+          { status: 200, headers: corsHeaders }
         );
       }
     } catch (error) {
@@ -107,10 +110,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle OPTIONS requests for CORS preflight
 export async function OPTIONS() {
   return new Response(null, {
-    status: 204, // No Content
+    status: 204,
     headers: corsHeaders,
   });
 }
