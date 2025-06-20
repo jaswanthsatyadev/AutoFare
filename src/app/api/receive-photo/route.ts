@@ -10,9 +10,9 @@ const ReceivePhotoInputSchema = z.object({
 });
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Origin': '*', // Allow all origins
+  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Allow POST and OPTIONS methods
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization', // Allow common headers
 };
 
 export async function POST(request: NextRequest) {
@@ -70,14 +70,17 @@ export async function POST(request: NextRequest) {
 
     const { selfieDataUri } = validatedFields.data;
 
+    // Store the selfie for the main page to pick up
     lastReceivedSelfieForPage = selfieDataUri;
+    // The actual verification logic is now handled by page.tsx after polling this selfie
 
     return NextResponse.json(
       { status: "success", message: "Selfie received successfully. Awaiting processing by the main application." },
       { status: 200, headers: corsHeaders }
     );
 
-  } catch (error: any) {
+  } catch (error: any)
+ {
     console.error("Error processing /api/receive-photo request:", error);
     let errorMessage = "An unknown error occurred while processing the photo via API.";
     if (error instanceof Error) {
@@ -93,9 +96,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
+  // Handle preflight requests
   return new Response(null, {
-    status: 204,
+    status: 204, // No Content
     headers: corsHeaders,
   });
 }
