@@ -1,10 +1,16 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { generateAlertSummary, type GenerateAlertSummaryInput, type GenerateAlertSummaryOutput } from "@/ai/flows/generate-alert-summary";
+import { enhanceCctvImage, type EnhanceCctvImageInput } from "@/ai/flows/enhance-cctv-image";
+import type { VerificationResult } from "@/app/actions"; // Re-using the type from actions
 
 const ReceivePhotoInputSchema = z.object({
-  imageDataUri: z.string().startsWith('data:image/', { message: "Image data must be a valid data URI (e.g., data:image/jpeg;base64,...)." }),
+  selfieDataUri: z.string().startsWith('data:image/', { message: "Selfie image data must be a valid data URI." }),
+  cctvDataUri: z.string().startsWith('data:image/', { message: "CCTV image data must be a valid data URI." }),
 });
+
+const SUCCESS_SUMMARY = "Likely the same person.";
 
 // Common headers for CORS
 const corsHeaders = {
@@ -21,7 +27,7 @@ export async function POST(request: NextRequest) {
     } catch (jsonError) {
       console.error("Invalid JSON payload:", jsonError);
       return NextResponse.json(
-        { message: "Invalid JSON payload. Please ensure the request body is a valid JSON object." },
+        { status: "error", message: "Invalid JSON payload. Please ensure the request body is a valid JSON object." } satisfies VerificationResult,
         { status: 400, headers: corsHeaders }
       );
     }
@@ -29,11 +35,13 @@ export async function POST(request: NextRequest) {
     const validatedFields = ReceivePhotoInputSchema.safeParse(body);
 
     if (!validatedFields.success) {
+      const fieldErrors = validatedFields.error.flatten().fieldErrors;
+      const errorMessage = Object.values(fieldErrors).flat().join(' ');
       return NextResponse.json(
         {
-          message: "Invalid input.",
-          errors: validatedFields.error.flatten().fieldErrors,
-        },
+          status: "error",
+          message: `Invalid input: ${errorMessage || "Validation failed."}`,
+        } satisfies VerificationResult,
         {
           status: 400,
           headers: corsHeaders,
@@ -41,30 +49,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { imageDataUri } = validatedFields.data;
+    const { selfieDataUri, cctvDataUri } = validatedFields.data;
 
-    // For now, just log a portion of the received data.
-    // In a real application, you would process or store this image.
-    console.log(`Received image data URI (length: ${imageDataUri.length}, first 50 chars): ${imageDataUri.substring(0, 50)}...`);
+    try {
+      const alertSummaryInput: GenerateAlertSummaryInput = {
+        selfieDataUri: selfieDataUri,
+        cctvDataUri: cctvDataUri,
+      };
+      const alertSummaryOutput: GenerateAlertSummaryOutput = await generateAlertSummary(alertSummaryInput);
 
-    // Here you could, for example, save the imageDataUri to a database,
-    // pass it to an AI flow, or store it as a file.
-
-    return NextResponse.json(
-      { message: "Photo received successfully." },
-      {
-        status: 200,
-        headers: corsHeaders,
+      if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
+        // console.log("Verification successful via API based on AI summary.");
+        return NextResponse.json(
+          { status: "verified", message: "Identity verified successfully via API." } satisfies VerificationResult,
+          { status: 200, headers: corsHeaders }
+        );
+      } else {
+        // AI indicates a mismatch, proceed to enhance image and report failure
+        const enhanceCctvImageInput: EnhanceCctvImageInput = {
+          cctvImageDataUri: cctvDataUri,
+        };
+        const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
+        
+        // console.log("Verification failed via API based on AI summary.");
+        return NextResponse.json(
+          {
+            status: "failed",
+            summary: alertSummaryOutput.summary,
+            enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
+            message: "Identity verification failed via API.",
+          } satisfies VerificationResult,
+          { status: 200, headers: corsHeaders } // Still 200 OK as the API processed the request
+        );
       }
-    );
+    } catch (error) {
+      console.error("Error during AI processing for API request:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during AI processing.";
+      return NextResponse.json(
+        { status: "error", message: `Failed to get AI insights via API: ${errorMessage}` } satisfies VerificationResult,
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
   } catch (error) {
-    console.error("Error processing /api/receive-photo request:", error);
-    let errorMessage = "An unknown error occurred while processing the photo.";
+    console.error("Outer error processing /api/receive-photo request:", error);
+    let errorMessage = "An unknown error occurred while processing the photo via API.";
     if (error instanceof Error) {
         errorMessage = error.message;
     }
     return NextResponse.json(
-      { message: "Failed to process photo.", error: errorMessage },
+      { status: "error", message: errorMessage } satisfies VerificationResult,
       {
         status: 500,
         headers: corsHeaders,
