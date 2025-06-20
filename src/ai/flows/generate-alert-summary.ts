@@ -27,7 +27,7 @@ const GenerateAlertSummaryInputSchema = z.object({
 export type GenerateAlertSummaryInput = z.infer<typeof GenerateAlertSummaryInputSchema>;
 
 const GenerateAlertSummaryOutputSchema = z.object({
-  summary: z.string().describe('A short summary of the verification failure.'),
+  summary: z.string().describe('A single-sentence summary of the verification analysis, indicating if they are likely the same person or highlighting a key structural difference if they are likely different.'),
 });
 export type GenerateAlertSummaryOutput = z.infer<typeof GenerateAlertSummaryOutputSchema>;
 
@@ -39,19 +39,23 @@ const prompt = ai.definePrompt({
   name: 'generateAlertSummaryPrompt',
   input: {schema: GenerateAlertSummaryInputSchema},
   output: {schema: GenerateAlertSummaryOutputSchema},
-  prompt: `You are a security expert analyzing a face verification failure. Based on the user's selfie and the CCTV image, generate a short summary of why the verification may have failed.
+  prompt: `You are a senior security analyst specialized in face verification systems.
 
-Focus ONLY on significant, fundamental differences in facial structure that would make the individuals appear to be *different people*.
+Task: Analyze a selfie and a separate CCTV image to determine *if the two faces belong to different individuals*. Provide a **single-sentence summary** stating the most likely cause of failure when they are very likely different.
 
-IMPORTANT: You MUST IGNORE minor variations such as:
-- Lighting conditions (e.g., brightness, shadows).
-- Skin tone differences (assume these are due to lighting).
-- Facial expressions (e.g., smiling vs. neutral).
-- Clothing or accessories.
-- Hairstyle changes.
-- Presence or absence of facial hair, or differences in facial hair length/style (e.g., beard vs. clean-shaven), unless the difference is so extreme it is impossible for it to be the same person within a reasonable timeframe.
+⚠️ **Ignore** all superficial variations:
+- Lighting, shadows, exposure differences
+- Facial expressions (smile, frown, open/closed mouth)
+- Skin tone shifts (due to light or color)
+- Hairstyles, hats, glasses, accessories
+- Facial hair changes (other than radical transformations)
 
-The goal is to identify if the individuals are very likely different people, not to nitpick discrepancies if they could plausibly be the same person with superficial changes.
+🧠 Focus only on major, structural facial differences that conclusively indicate two different people — such as fundamentally different face shape, eye spacing, nose structure, jawline, ear shape, or relative positioning of fixed facial landmarks.
+
+1. Output **one single sentence** (no bullet points, no extra text)
+2. If faces are the same, respond: “Likely the same person.”
+3. If different, mention the clearest structural difference, for example:  
+   “Different nose bridge height suggests two individuals.”
 
 Selfie: {{media url=selfieDataUri}}
 CCTV Image: {{media url=cctvDataUri}}
@@ -66,8 +70,11 @@ const generateAlertSummaryFlow = ai.defineFlow(
     outputSchema: GenerateAlertSummaryOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    const {output, response} = await prompt(input);
+    if (!output) {
+      console.error('AI did not return an output for generateAlertSummary. Full AI response:', JSON.stringify(response, null, 2));
+      throw new Error('AI failed to generate an alert summary. The response from the AI was empty or malformed.');
+    }
+    return output;
   }
 );
-
