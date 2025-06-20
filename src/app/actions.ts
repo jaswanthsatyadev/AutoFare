@@ -9,7 +9,7 @@ import type { EnhanceCctvImageInput } from "@/ai/flows/enhance-cctv-image";
 
 const VerificationInputSchema = z.object({
   selfieDataUri: z.string().startsWith("data:image/", { message: "Selfie must be a valid image data URI." }),
-  cctvDataUri: z.string().startsWith("data:image/", { message: "CCTV image must be a valid image data URI." }),
+  cctvDataUri: z.string().startsWith("data:image/", { message: "CCTV frame must be a valid image data URI." }),
 });
 
 export type VerificationResult = 
@@ -17,18 +17,18 @@ export type VerificationResult =
   | { status: "failed"; summary: string; enhancedImageUri: string; message: string }
   | { status: "error"; message: string };
 
-// Placeholder for a 1x1 transparent PNG data URI
-const TRANSPARENT_PNG_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-
-
 export async function processVerification(
   prevState: any,
   formData: FormData
 ): Promise<VerificationResult> {
   const selfieFile = formData.get("selfie") as File | null;
+  const cctvDataUriFromForm = formData.get("cctvDataUri") as string | null;
 
   if (!selfieFile) {
     return { status: "error", message: "Selfie image is required." };
+  }
+  if (!cctvDataUriFromForm) {
+    return { status: "error", message: "CCTV frame is required. Please ensure camera is working." };
   }
 
   let selfieDataUri: string;
@@ -41,36 +41,28 @@ export async function processVerification(
     return { status: "error", message: "Failed to process selfie image." };
   }
   
-  // For this demonstration, we'll use a placeholder for the CCTV image data URI.
-  // In a real application, this would be fetched from Firebase Storage or another source.
-  const cctvDataUriForAI = TRANSPARENT_PNG_DATA_URI; 
-
-
   const validatedFields = VerificationInputSchema.safeParse({
     selfieDataUri: selfieDataUri,
-    cctvDataUri: cctvDataUriForAI, 
+    cctvDataUri: cctvDataUriFromForm, 
   });
 
   if (!validatedFields.success) {
+    const fieldErrors = validatedFields.error.flatten().fieldErrors;
+    const errorMessage = Object.values(fieldErrors).flat().join(' ');
     return {
       status: "error",
-      message: "Invalid input: " + validatedFields.error.flatten().fieldErrors,
+      message: `Invalid input: ${errorMessage || "Validation failed."}`,
     };
   }
 
   const { selfieDataUri: validSelfieDataUri, cctvDataUri: validCctvDataUri } = validatedFields.data;
 
-  // Simulate face verification (e.g., DeepFace, OpenCV)
-  // This part is mocked for the Next.js app.
-  // In a real system, this would call a backend API (e.g., FastAPI).
-  const isMatch = Math.random() < 0.3; // 30% chance of matching for demo
+  const isMatch = Math.random() < 0.3; 
 
   if (isMatch) {
-    // Simulate updating Firebase with verification status
     console.log("Verification successful. Updating Firebase.");
     return { status: "verified", message: "Identity verified successfully." };
   } else {
-    // Verification failed, call AI flows
     try {
       const alertSummaryInput: GenerateAlertSummaryInput = {
         selfieDataUri: validSelfieDataUri,
@@ -79,11 +71,10 @@ export async function processVerification(
       const alertSummaryOutput = await generateAlertSummary(alertSummaryInput);
 
       const enhanceCctvImageInput: EnhanceCctvImageInput = {
-        cctvImageDataUri: validCctvDataUri,
+        cctvImageDataUri: validCctvDataUri, // Note: schema uses cctvImageDataUri
       };
       const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
       
-      // Simulate logging alert to Firestore and sending FCM
       console.log("Verification failed. Logging alert and sending FCM.");
 
       return {

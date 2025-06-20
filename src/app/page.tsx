@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useFormState, useFormStatus } from "react-dom";
 import { processVerification, type VerificationResult } from "./actions";
@@ -11,20 +11,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, Video, Loader2, CheckCircle2, XCircle, AlertTriangle, Sparkles, UploadCloud } from "lucide-react";
+import { Camera, Video, Loader2, CheckCircle2, XCircle, AlertTriangle, Sparkles, UploadCloud, CameraOff } from "lucide-react";
 
-const CCTV_PLACEHOLDER_URL = "https://placehold.co/400x400.png";
 const SELFIE_PLACEHOLDER_URL = "https://placehold.co/400x400.png";
 
 const initialState: VerificationResult = {
-  status: "error", // Will be 'idle' conceptually, but needs a type match
+  status: "error", 
   message: "",
 };
 
-function SubmitButton() {
+function ActualSubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+    <Button type="submit" className="w-full sm:w-auto" disabled={disabled || pending}>
       {pending ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -43,6 +42,10 @@ export default function HomePage() {
 
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const selfieInputRef = useRef<HTMLInputElement>(null);
+  const cctvVideoRef = useRef<HTMLVideoElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (state?.status === "error" && state.message) {
@@ -65,6 +68,45 @@ export default function HomePage() {
     }
   }, [state, toast]);
 
+  useEffect(() => {
+    const getCameraPermission = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('getUserMedia not supported');
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Error',
+          description: 'Your browser does not support camera access.',
+        });
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        if (cctvVideoRef.current) {
+          cctvVideoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings and refresh the page.',
+        });
+      }
+    };
+
+    getCameraPermission();
+
+    return () => {
+      if (cctvVideoRef.current && cctvVideoRef.current.srcObject) {
+        const stream = cctvVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [toast]);
+
   const handleSelfieChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -78,6 +120,49 @@ export default function HomePage() {
     }
   };
 
+  const handleFormSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    const currentForm = event.currentTarget;
+    const cctvHiddenInput = currentForm.elements.namedItem('cctvDataUri') as HTMLInputElement | null;
+
+    if (hasCameraPermission && cctvVideoRef.current && cctvHiddenInput) {
+      const videoElement = cctvVideoRef.current;
+
+      if (videoElement.readyState < videoElement.HAVE_ENOUGH_DATA || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+          toast({ variant: "destructive", title: "Camera Error", description: "Camera feed is not ready or has invalid dimensions. Please wait a moment." });
+          event.preventDefault(); 
+          return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+          toast({ variant: "destructive", title: "Capture Error", description: "Could not process video frame." });
+          event.preventDefault();
+          return;
+      }
+      ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+      try {
+        const dataUri = canvas.toDataURL('image/webp'); 
+        cctvHiddenInput.value = dataUri;
+      } catch (e) {
+        console.error("Error converting canvas to Data URI:", e);
+        toast({ variant: "destructive", title: "Capture Error", description: "Failed to capture video frame." });
+        event.preventDefault();
+        return;
+      }
+      
+    } else if (!hasCameraPermission && cctvHiddenInput) {
+      toast({ variant: "destructive", title: "Camera Required", description: "Camera access is required for CCTV footage." });
+      event.preventDefault();
+      return;
+    }
+    // Form submission will proceed with formAction
+  }, [hasCameraPermission, toast]);
+
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background font-body">
       <header className="text-center mb-10">
@@ -88,12 +173,13 @@ export default function HomePage() {
       </header>
 
       <main className="w-full max-w-4xl">
-        <form action={formAction}>
+        <form ref={formRef} action={formAction} onSubmit={handleFormSubmit}>
+          <input type="hidden" name="cctvDataUri" id="cctvDataUri" />
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle className="text-2xl font-headline">Verification Portal</CardTitle>
               <CardDescription>
-                Upload your selfie to verify your identity against CCTV footage.
+                Upload your selfie to verify your identity against live camera footage.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-8">
@@ -135,20 +221,28 @@ export default function HomePage() {
                 {/* CCTV Image Section */}
                 <div className="space-y-4">
                   <Label className="text-lg font-medium flex items-center gap-2">
-                    <Video className="w-6 h-6 text-primary" /> CCTV Snapshot
+                    <Video className="w-6 h-6 text-primary" /> Live CCTV Feed
                   </Label>
-                  <div className="aspect-square w-full bg-muted rounded-lg overflow-hidden border-2">
-                    <Image
-                      src={CCTV_PLACEHOLDER_URL}
-                      alt="CCTV snapshot"
-                      width={400}
-                      height={400}
-                      className="object-cover w-full h-full"
-                      data-ai-hint="security camera"
-                    />
+                  <div className="relative aspect-square w-full bg-muted rounded-lg overflow-hidden border-2">
+                    <video ref={cctvVideoRef} className="object-cover w-full h-full" autoPlay muted playsInline />
+                    {hasCameraPermission === null && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80">
+                        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                        <p className="mt-2 text-muted-foreground">Initializing camera...</p>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Latest CCTV image used for verification.
+                  {hasCameraPermission === false && (
+                    <Alert variant="destructive" className="mt-2">
+                      <CameraOff className="h-4 w-4" />
+                      <AlertTitle>Camera Access Denied</AlertTitle>
+                      <AlertDescription>
+                        VeriFace Transit needs camera access for CCTV footage. Please enable camera permissions in your browser settings and refresh the page.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                   <p className="text-sm text-muted-foreground">
+                    Live camera feed for verification. A snapshot will be taken upon submission.
                   </p>
                 </div>
               </div>
@@ -203,7 +297,7 @@ export default function HomePage() {
               )}
             </CardContent>
             <CardFooter className="flex justify-end">
-              <SubmitButton />
+              <ActualSubmitButton disabled={!selfiePreview || hasCameraPermission !== true} />
             </CardFooter>
           </Card>
         </form>
