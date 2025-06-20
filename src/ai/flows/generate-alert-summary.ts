@@ -41,21 +41,35 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateAlertSummaryOutputSchema},
   prompt: `You are a senior security analyst specialized in face verification systems.
 
-Task: Analyze a selfie and a separate CCTV image to determine *if the two faces belong to different individuals*. Provide a **single-sentence summary** stating the most likely cause of failure when they are very likely different.
+Task: Analyze a selfie and a separate CCTV image to determine *if the selfie face matches any face in the CCTV image*.
 
-⚠️ **Ignore** all superficial variations:
+IMPORTANT: The CCTV image may contain multiple people.
+
+Your goal is to compare the user's selfie against **each individual face** in the CCTV image. If **even one face** appears to structurally match the selfie, assume it is the **same person**.
+
+✅ Consider the verification **successful** if:
+- Any one face has a strong structural resemblance to the selfie face.
+
+❌ Only declare a failure if:
+- **None** of the faces match the selfie in terms of fundamental facial geometry (eye spacing, facial contours, jawline, etc.)
+
+You must check all visible faces individually before making a decision.
+
+⚠️ **Ignore** all superficial variations for each comparison:
 - Lighting, shadows, exposure differences
 - Facial expressions (smile, frown, open/closed mouth)
 - Skin tone shifts (due to light or color)
 - Hairstyles, hats, glasses, accessories
 - Facial hair changes (other than radical transformations)
 
-🧠 Focus only on major, structural facial differences that conclusively indicate two different people — such as fundamentally different face shape, eye spacing, nose structure, jawline, ear shape, or relative positioning of fixed facial landmarks.
+🧠 Focus only on major, structural facial differences that conclusively indicate two different people for any given comparison — such as fundamentally different face shape, eye spacing, nose structure, jawline, ear shape, or relative positioning of fixed facial landmarks.
 
-1. Output **one single sentence** (no bullet points, no extra text)
-2. If faces are the same, respond: “Likely the same person.”
-3. If different, mention the clearest structural difference, for example:  
-   “Different nose bridge height suggests two individuals.”
+Output:
+1.  Output **one single sentence** (no bullet points, no extra text).
+2.  If a match is found with any face in the CCTV image, respond: “Likely the same person.”
+3.  If no match is found after checking all faces, state the most likely structural reason the person is not found (e.g., “No individual in the CCTV image shares the same distinct jawline as the selfie.”).
+
+Avoid discussing lighting, expression, or appearance-based changes unless they strongly alter **fixed facial geometry**.
 
 Selfie: {{media url=selfieDataUri}}
 CCTV Image: {{media url=cctvDataUri}}
@@ -71,10 +85,11 @@ const generateAlertSummaryFlow = ai.defineFlow(
   },
   async input => {
     const {output, response} = await prompt(input);
-    if (!output) {
-      console.error('AI did not return an output for generateAlertSummary. Full AI response:', JSON.stringify(response, null, 2));
-      throw new Error('AI failed to generate an alert summary. The response from the AI was empty or malformed.');
+    if (!output || !output.summary) {
+      console.error('AI did not return a valid summary. Full AI response:', JSON.stringify(response, null, 2));
+      throw new Error('AI failed to generate an alert summary. The response from the AI was empty, malformed, or missing the summary field.');
     }
     return output;
   }
 );
+
