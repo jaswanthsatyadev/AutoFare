@@ -57,7 +57,8 @@ export async function processVerification(
 
   const { selfieDataUri: validSelfieDataUri, cctvDataUri: validCctvDataUri } = validatedFields.data;
 
-  const isMatch = Math.random() < 0.3; 
+  // Increased probability for a match to simulate more lenient verification
+  const isMatch = Math.random() < 0.7; 
 
   if (isMatch) {
     console.log("Verification successful. Updating Firebase.");
@@ -71,7 +72,7 @@ export async function processVerification(
       const alertSummaryOutput = await generateAlertSummary(alertSummaryInput);
 
       const enhanceCctvImageInput: EnhanceCctvImageInput = {
-        cctvImageDataUri: validCctvDataUri, // Note: schema uses cctvImageDataUri
+        cctvImageDataUri: validCctvDataUri,
       };
       const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
       
@@ -90,3 +91,4 @@ export async function processVerification(
     }
   }
 }
+
