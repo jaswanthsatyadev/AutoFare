@@ -39,7 +39,19 @@ const prompt = ai.definePrompt({
   name: 'generateAlertSummaryPrompt',
   input: {schema: GenerateAlertSummaryInputSchema},
   output: {schema: GenerateAlertSummaryOutputSchema},
-  prompt: `You are a security expert analyzing a face verification failure. Based on the user's selfie and the CCTV image, generate a short summary of why the verification may have failed. Focus on significant differences that would make the individuals appear to be *different people*, even if overall facial structure seems somewhat similar. Ignore minor variations in facial expressions, lighting conditions, or clothing. The goal is to identify if the individuals are likely different, not to nitpick minor discrepancies if they appear to be the same person.
+  prompt: `You are a security expert analyzing a face verification failure. Based on the user's selfie and the CCTV image, generate a short summary of why the verification may have failed.
+
+Focus ONLY on significant, fundamental differences in facial structure that would make the individuals appear to be *different people*.
+
+IMPORTANT: You MUST IGNORE minor variations such as:
+- Lighting conditions (e.g., brightness, shadows).
+- Skin tone differences (assume these are due to lighting).
+- Facial expressions (e.g., smiling vs. neutral).
+- Clothing or accessories.
+- Hairstyle changes.
+- Presence or absence of facial hair, or differences in facial hair length/style (e.g., beard vs. clean-shaven), unless the difference is so extreme it is impossible for it to be the same person within a reasonable timeframe.
+
+The goal is to identify if the individuals are very likely different people, not to nitpick discrepancies if they could plausibly be the same person with superficial changes.
 
 Selfie: {{media url=selfieDataUri}}
 CCTV Image: {{media url=cctvDataUri}}
