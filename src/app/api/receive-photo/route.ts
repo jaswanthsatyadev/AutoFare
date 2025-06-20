@@ -10,7 +10,7 @@ const ReceivePhotoInputSchema = z.object({
   cctvDataUri: z.string().startsWith('data:image/', { message: "CCTV image data must be a valid data URI." }),
 });
 
-const SUCCESS_SUMMARY = "Likely the same person.";
+const SUCCESS_SUMMARY = "Verified successful: The same person is present in both images.";
 
 // Common headers for CORS
 const corsHeaders = {
@@ -65,19 +65,19 @@ export async function POST(request: NextRequest) {
           { status: 200, headers: corsHeaders }
         );
       } else {
-        // AI indicates a mismatch, proceed to enhance image and report failure
+        // AI indicates a mismatch or uncertainty
         const enhanceCctvImageInput: EnhanceCctvImageInput = {
           cctvImageDataUri: cctvDataUri,
         };
         const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
         
-        // console.log("Verification failed via API based on AI summary.");
+        // console.log("Verification failed or uncertain via API based on AI summary.");
         return NextResponse.json(
           {
             status: "failed",
-            summary: alertSummaryOutput.summary,
+            summary: alertSummaryOutput.summary, // This will be "No matching person..." or "Unable to determine..."
             enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
-            message: "Identity verification failed via API.",
+            message: "Identity verification did not confirm a match via API.",
           } satisfies VerificationResult,
           { status: 200, headers: corsHeaders } // Still 200 OK as the API processed the request
         );

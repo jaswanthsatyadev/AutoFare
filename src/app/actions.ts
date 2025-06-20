@@ -17,7 +17,7 @@ export type VerificationResult =
   | { status: "failed"; summary: string; enhancedImageUri: string; message: string }
   | { status: "error"; message: string };
 
-const SUCCESS_SUMMARY = "Likely the same person.";
+const SUCCESS_SUMMARY = "Verified successful: The same person is present in both images.";
 
 export async function processVerification(
   prevState: any,
@@ -68,21 +68,23 @@ export async function processVerification(
 
     if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
       console.log("Verification successful based on AI summary. Updating Firebase.");
+      // TODO: Implement Firebase update for successful verification
       return { status: "verified", message: "Identity verified successfully." };
     } else {
-      // AI indicates a mismatch, proceed to enhance image and report failure
+      // AI indicates a mismatch or uncertainty
       const enhanceCctvImageInput: EnhanceCctvImageInput = {
         cctvImageDataUri: validCctvDataUri,
       };
       const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
       
-      console.log("Verification failed based on AI summary. Logging alert and sending FCM.");
+      console.log("Verification failed or uncertain based on AI summary. Logging alert and sending FCM.");
+      // TODO: Implement alert logging and FCM notification for failed verification
 
       return {
         status: "failed",
-        summary: alertSummaryOutput.summary,
+        summary: alertSummaryOutput.summary, // This will now be "No matching person..." or "Unable to determine..."
         enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
-        message: "Identity verification failed.",
+        message: "Identity verification did not confirm a match.", // More generic message
       };
     }
   } catch (error) {
