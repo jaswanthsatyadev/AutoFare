@@ -3,12 +3,10 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 // In-memory store for the last received selfie for page.tsx to pick up
-// In a real application, you might use a more robust solution like a database, Redis, or a message queue.
 export let lastReceivedSelfieForPage: string | null = null;
 
 const ReceivePhotoInputSchema = z.object({
   selfieDataUri: z.string().startsWith('data:image/', { message: "Selfie image data must be a valid data URI." }),
-  // cctvDataUri is no longer expected from the remote API caller
 });
 
 const corsHeaders = {
@@ -18,14 +16,32 @@ const corsHeaders = {
 };
 
 export async function POST(request: NextRequest) {
+  console.log("Received POST request to /api/receive-photo");
+  // Log all incoming headers for diagnostic purposes
+  const requestHeaders: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    requestHeaders[key] = value;
+  });
+  console.log("Request headers:", JSON.stringify(requestHeaders, null, 2));
+
   try {
     let body;
     try {
       body = await request.json();
-    } catch (jsonError) {
-      console.error("Invalid JSON payload:", jsonError);
+    } catch (jsonError: any) {
+      console.error("Failed to parse JSON payload:", jsonError.message);
+      let message = "Invalid JSON payload.";
+      if (jsonError instanceof SyntaxError) {
+        message = `Invalid JSON syntax: ${jsonError.message}. Ensure the request body is valid JSON.`;
+      }
+      
+      const contentType = request.headers.get("content-type");
+      if (!contentType || !contentType.toLowerCase().includes("application/json")) {
+        message += " Also, ensure the 'Content-Type' header is set to 'application/json'.";
+      }
+      
       return NextResponse.json(
-        { status: "error", message: "Invalid JSON payload. Please ensure the request body is a valid JSON object." },
+        { status: "error", message },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -34,11 +50,16 @@ export async function POST(request: NextRequest) {
 
     if (!validatedFields.success) {
       const fieldErrors = validatedFields.error.flatten().fieldErrors;
-      const errorMessage = Object.values(fieldErrors).flat().join(' ');
+      const errorMessages = Object.values(fieldErrors).flat();
+      // Filter out undefined or null messages, though flat() should handle nested arrays.
+      const errorMessageString = errorMessages.filter(msg => typeof msg === 'string').join(' ');
+      
+      console.error("Input validation failed:", JSON.stringify(validatedFields.error.flatten(), null, 2));
       return NextResponse.json(
         {
           status: "error",
-          message: `Invalid input: ${errorMessage || "Validation failed."}`,
+          message: `Invalid input: ${errorMessageString || "Validation failed. Check selfieDataUri format."}`,
+          errors: validatedFields.error.flatten().fieldErrors,
         },
         {
           status: 400,
@@ -49,18 +70,14 @@ export async function POST(request: NextRequest) {
 
     const { selfieDataUri } = validatedFields.data;
 
-    // Store the selfie for page.tsx to pick up
     lastReceivedSelfieForPage = selfieDataUri;
 
-    // The API endpoint now only receives the selfie.
-    // The comparison and AI processing will be triggered by page.tsx
-    // when it polls for and finds this new selfie.
     return NextResponse.json(
       { status: "success", message: "Selfie received successfully. Awaiting processing by the main application." },
       { status: 200, headers: corsHeaders }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error processing /api/receive-photo request:", error);
     let errorMessage = "An unknown error occurred while processing the photo via API.";
     if (error instanceof Error) {
@@ -82,4 +99,3 @@ export async function OPTIONS() {
     headers: corsHeaders,
   });
 }
-
