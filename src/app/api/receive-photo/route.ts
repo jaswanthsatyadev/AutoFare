@@ -1,9 +1,6 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { generateAlertSummary, type GenerateAlertSummaryInput, type GenerateAlertSummaryOutput } from "@/ai/flows/generate-alert-summary";
-import { enhanceCctvImage, type EnhanceCctvImageInput } from "@/ai/flows/enhance-cctv-image";
-import type { VerificationResult } from "@/app/actions";
 
 // In-memory store for the last received selfie for page.tsx to pick up
 // In a real application, you might use a more robust solution like a database, Redis, or a message queue.
@@ -11,10 +8,8 @@ export let lastReceivedSelfieForPage: string | null = null;
 
 const ReceivePhotoInputSchema = z.object({
   selfieDataUri: z.string().startsWith('data:image/', { message: "Selfie image data must be a valid data URI." }),
-  cctvDataUri: z.string().startsWith('data:image/', { message: "CCTV image data must be a valid data URI." }),
+  // cctvDataUri is no longer expected from the remote API caller
 });
-
-const SUCCESS_SUMMARY = "Verified successful: The same person is present in both images.";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +25,7 @@ export async function POST(request: NextRequest) {
     } catch (jsonError) {
       console.error("Invalid JSON payload:", jsonError);
       return NextResponse.json(
-        { status: "error", message: "Invalid JSON payload. Please ensure the request body is a valid JSON object." } satisfies VerificationResult,
+        { status: "error", message: "Invalid JSON payload. Please ensure the request body is a valid JSON object." },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -44,7 +39,7 @@ export async function POST(request: NextRequest) {
         {
           status: "error",
           message: `Invalid input: ${errorMessage || "Validation failed."}`,
-        } satisfies VerificationResult,
+        },
         {
           status: 400,
           headers: corsHeaders,
@@ -52,56 +47,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { selfieDataUri, cctvDataUri } = validatedFields.data;
+    const { selfieDataUri } = validatedFields.data;
 
     // Store the selfie for page.tsx to pick up
     lastReceivedSelfieForPage = selfieDataUri;
 
-    try {
-      const alertSummaryInput: GenerateAlertSummaryInput = {
-        selfieDataUri: selfieDataUri,
-        cctvDataUri: cctvDataUri,
-      };
-      const alertSummaryOutput: GenerateAlertSummaryOutput = await generateAlertSummary(alertSummaryInput);
-
-      if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
-        return NextResponse.json(
-          { status: "verified", message: "Identity verified successfully via API." } satisfies VerificationResult,
-          { status: 200, headers: corsHeaders }
-        );
-      } else {
-        const enhanceCctvImageInput: EnhanceCctvImageInput = {
-          cctvImageDataUri: cctvDataUri,
-        };
-        const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
-        
-        return NextResponse.json(
-          {
-            status: "failed",
-            summary: alertSummaryOutput.summary,
-            enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
-            message: "Identity verification did not confirm a match via API.",
-          } satisfies VerificationResult,
-          { status: 200, headers: corsHeaders }
-        );
-      }
-    } catch (error) {
-      console.error("Error during AI processing for API request:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during AI processing.";
-      return NextResponse.json(
-        { status: "error", message: `Failed to get AI insights via API: ${errorMessage}` } satisfies VerificationResult,
-        { status: 500, headers: corsHeaders }
-      );
-    }
+    // The API endpoint now only receives the selfie.
+    // The comparison and AI processing will be triggered by page.tsx
+    // when it polls for and finds this new selfie.
+    return NextResponse.json(
+      { status: "success", message: "Selfie received successfully. Awaiting processing by the main application." },
+      { status: 200, headers: corsHeaders }
+    );
 
   } catch (error) {
-    console.error("Outer error processing /api/receive-photo request:", error);
+    console.error("Error processing /api/receive-photo request:", error);
     let errorMessage = "An unknown error occurred while processing the photo via API.";
     if (error instanceof Error) {
         errorMessage = error.message;
     }
     return NextResponse.json(
-      { status: "error", message: errorMessage } satisfies VerificationResult,
+      { status: "error", message: errorMessage },
       {
         status: 500,
         headers: corsHeaders,
@@ -116,3 +82,4 @@ export async function OPTIONS() {
     headers: corsHeaders,
   });
 }
+
