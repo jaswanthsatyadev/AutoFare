@@ -1,14 +1,13 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { generateAlertSummary } from '@/ai/flows/generate-alert-summary';
-import { enhanceCctvImage } from '@/ai/flows/enhance-cctv-image';
-import type { GenerateAlertSummaryInput, GenerateAlertSummaryOutput } from '@/ai/flows/generate-alert-summary';
-import type { EnhanceCctvImageInput } from '@/ai/flows/enhance-cctv-image';
+
+// This is a simplified in-memory store for the prototype.
+// It allows the main page to poll for a selfie received by this API route.
+export let lastReceivedSelfieForPage: string | null = null;
 
 const ReceivePhotoInputSchema = z.object({
   selfieDataUri: z.string().startsWith('data:image/', { message: "Selfie image must be a valid data URI." }),
-  cctvDataUri: z.string().startsWith('data:image/', { message: "CCTV image must be a valid data URI." }),
 });
 
 const corsHeaders = {
@@ -17,9 +16,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization', // Allow common headers
 };
 
-const SUCCESS_SUMMARY = "Verified successful: The same person is present in both images.";
 
 export async function POST(request: NextRequest) {
+  // Add logging for request headers for debugging
+  const headers = Object.fromEntries(request.headers.entries());
+  console.log('Received POST request headers:', headers);
+  
   try {
     const body = await request.json();
     const validatedFields = ReceivePhotoInputSchema.safeParse(body);
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           status: "error", 
-          message: "Invalid input",
+          message: "Invalid input. Ensure you are sending a JSON object with 'selfieDataUri' and check your 'Content-Type: application/json' header.",
           errors: validatedFields.error.flatten().fieldErrors,
         }, 
         { 
@@ -38,33 +40,25 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const { selfieDataUri, cctvDataUri } = validatedFields.data;
-    
-    const alertSummaryInput: GenerateAlertSummaryInput = { selfieDataUri, cctvDataUri };
-    const alertSummaryOutput: GenerateAlertSummaryOutput = await generateAlertSummary(alertSummaryInput);
+    // Store the selfie for the main page to poll
+    lastReceivedSelfieForPage = validatedFields.data.selfieDataUri;
+    console.log(`Received and stored new selfie for polling: ${lastReceivedSelfieForPage.substring(0, 50)}...`);
 
-    if (alertSummaryOutput.summary === SUCCESS_SUMMARY) {
-      return NextResponse.json(
-        { status: "verified", message: "Identity verified successfully." },
+    return NextResponse.json(
+        { status: "success", message: "Photo received successfully." },
         { status: 200, headers: corsHeaders }
-      );
-    } else {
-      const enhanceCctvImageInput: EnhanceCctvImageInput = { cctvImageDataUri: cctvDataUri };
-      const enhanceCctvImageOutput = await enhanceCctvImage(enhanceCctvImageInput);
-      
-      return NextResponse.json(
-        {
-          status: "failed",
-          summary: alertSummaryOutput.summary,
-          enhancedImageUri: enhanceCctvImageOutput.enhancedCctvImageDataUri,
-          message: "Identity verification did not confirm a match.",
-        },
-        { status: 200, headers: corsHeaders }
-      );
-    }
+    );
   } catch (error) {
     console.error("Error in /api/receive-photo:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+    let errorMessage = "An unknown error occurred.";
+    if (error instanceof Error) {
+        errorMessage = error.message;
+    }
+    // Check for JSON parsing errors specifically
+    if (errorMessage.includes('Unexpected token')) {
+        errorMessage = "Failed to parse JSON body. Please ensure the request body is valid JSON and the 'Content-Type' header is set to 'application/json'.";
+    }
+
     return NextResponse.json(
       { status: "error", message: `Backend Error: ${errorMessage}` },
       { status: 500, headers: corsHeaders }
@@ -73,7 +67,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function OPTIONS(request: NextRequest) {
-  // Handle preflight requests
+  // Handle preflight requests for CORS
   return new Response(null, {
     status: 204, // No Content
     headers: corsHeaders,
