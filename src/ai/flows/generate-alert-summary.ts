@@ -105,9 +105,9 @@ const generateAlertSummaryFlow = ai.defineFlow(
     outputSchema: GenerateAlertSummaryOutputSchema,
   },
   async input => {
-    const {output, response} = await prompt(input);
+    const {output} = await prompt(input);
     if (!output || !output.summary) {
-      console.error('AI did not return a valid summary. Full AI response:', JSON.stringify(response, null, 2));
+      console.error('AI did not return a valid summary.');
       throw new Error('AI failed to generate an alert summary. The response from the AI was empty, malformed, or missing the summary field.');
     }
     return output;
