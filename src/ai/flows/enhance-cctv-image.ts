@@ -47,7 +47,7 @@ const enhanceCctvImageFlow = ai.defineFlow(
   },
   async (input: EnhanceCctvImageInput): Promise<EnhanceCctvImageOutput> => {
     const {media} = await ai.generate({
-      model: 'googleai/gemini-2.0-flash-exp',
+      model: 'googleai/gemini-2.0-flash',
       prompt: [
         {media: {url: input.cctvImageDataUri}}, // Pass the data URI directly
         {
