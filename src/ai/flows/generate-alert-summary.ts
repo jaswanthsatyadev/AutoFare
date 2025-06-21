@@ -5,7 +5,7 @@
  * @fileOverview Generates a summary of a verification failure, including possible reasons.
  *
  * - generateAlertSummary - A function that generates the alert summary.
- * - GenerateAlertSummaryInput - The input type for the generateAlertSummary function.
+ * - GenerateAlertSummaryInput - The input type for the generateAlertsummary function.
  * - GenerateAlertSummaryOutput - The return type for the generateAlertSummary function.
  */
 
@@ -27,7 +27,7 @@ const GenerateAlertSummaryInputSchema = z.object({
 export type GenerateAlertSummaryInput = z.infer<typeof GenerateAlertSummaryInputSchema>;
 
 const GenerateAlertSummaryOutputSchema = z.object({
-  summary: z.string().describe('A single-sentence summary of the verification analysis. It will state if the same person is present, if no match is found, or if the determination cannot be made with confidence.'),
+  summary: z.string().describe("A single-sentence summary of the verification analysis. It will state if the same person is present, if no match is found, or if the determination cannot be made with confidence."),
 });
 export type GenerateAlertSummaryOutput = z.infer<typeof GenerateAlertSummaryOutputSchema>;
 
@@ -39,61 +39,31 @@ const prompt = ai.definePrompt({
   name: 'generateAlertSummaryPrompt',
   input: {schema: GenerateAlertSummaryInputSchema},
   output: {schema: GenerateAlertSummaryOutputSchema},
-  prompt: `Role:
-You are an advanced AI face recognition system. Your task is to analyze two images and determine if the same person appears in both, even if there are multiple people in one or both images.
+  prompt: `You are a meticulous forensic facial comparison expert. Your primary goal is to determine if the same individual appears in two separate images (a selfie and a CCTV snapshot) with the highest possible accuracy. Do not be easily convinced; scrutinize every detail.
 
-Instructions
-Analyze Each Image Individually
+Step 1: Image Quality Assessment
+First, for both the selfie and the CCTV image, assess the quality. Note factors like: lighting (harsh shadows, overexposure), resolution (blurriness, pixelation), obstructions (hair, hands, objects), and camera angle (frontal, profile, tilted).
 
-For each image:
+Step 2: Facial Landmark Analysis
+For each clear face in both images, identify and compare key facial landmarks. Analyze the spatial relationship and proportions between: the inner and outer corners of the eyes, the tip of the nose, the corners of the mouth, and the chin.
 
-Detect and extract all visible faces.
+Step 3: Feature-by-Feature Comparison
+Perform a detailed comparison of individual features:
+- Eyes: Shape, size, spacing, and eyebrow shape.
+- Nose: Bridge width, tip shape, and nostril flare.
+- Mouth: Lip thickness, mouth width, and shape.
+- Face Shape: Overall head shape, jawline definition, and chin structure.
+- Unique Identifiers: Look for any consistent moles, scars, or other permanent marks.
 
-For each face, describe the main features: eyes, nose, mouth, jawline, skin tone, and any unique marks or characteristics.
+Step 4: Synthesis and Reasoning
+Synthesize your findings. State how many points of similarity and discrepancy you found. Account for variations due to lighting, expression, and angle. Based on your analysis, make a final determination.
 
-Note the pose, lighting, and image quality for each face.
+Step 5: Final Output
+Provide your final conclusion in a single sentence for the 'summary' field, choosing ONLY from the following exact phrases:
+- "Verified successful: The same person is present in both images."
+- "No matching person found in both images."
+- "Unable to determine with confidence."
 
-Compare Faces Across Images
-
-For each face in Image 1:
-
-Compare it with every face in Image 2.
-
-Align facial landmarks (eyes, nose, mouth) and assess similarity of each feature.
-
-Account for variations in lighting, angle, or expression, but prioritize structural similarities.
-
-For each face in Image 2:
-
-Optionally, repeat the above step for completeness (if you want to catch all possible matches).
-
-Handle Group Photos
-
-If there are multiple people in either image:
-
-Identify and label each person (e.g., Person 1, Person 2, etc.).
-
-For each person, check if they appear in the other image.
-
-If a match is found, note the label and the matching person in the other image.
-
-Output
-
-If the same person is present in both images (even in a group):
-
-"Verified successful: The same person is present in both images."
-
-Optionally, specify which individuals matched (e.g., "Person 1 in Image 1 matches Person 2 in Image 2").
-
-If no match is found:
-
-"No matching person found in both images."
-
-If you are unsure due to poor image quality or significant differences:
-
-"Unable to determine with confidence."
-
-Always reason step-by-step and explain your decision.
 Image 1 (Selfie): {{media url=selfieDataUri}}
 Image 2 (CCTV): {{media url=cctvDataUri}}`,
 });

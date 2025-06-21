@@ -130,41 +130,49 @@ export default function HomePage() {
             programmaticSelfieDataUriRef.current.value = data.selfieDataUri;
           }
           
-          // Programmatically submit the form
-          if (formRef.current) {
-             // Ensure CCTV frame is captured before submitting
-            const cctvHiddenInput = formRef.current.elements.namedItem('cctvDataUri') as HTMLInputElement | null;
-            if (hasCameraPermission && cctvVideoRef.current && cctvHiddenInput) {
-                const videoElement = cctvVideoRef.current;
-                if (videoElement.readyState >= videoElement.HAVE_ENOUGH_DATA && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = videoElement.videoWidth;
-                    canvas.height = videoElement.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                        try {
-                            cctvHiddenInput.value = canvas.toDataURL('image/webp');
-                             if (formRef.current) {
-                                // Manually trigger form action state update with custom FormData
-                                const formData = new FormData(formRef.current);
-                                // Remove the file input "selfie" if programmatic one is used
-                                if (data.selfieDataUri) formData.delete('selfie');
-                                formAction(formData); // Directly invoke formAction
-                            }
-                        } catch (e) {
-                            toast({ variant: "destructive", title: "Capture Error", description: "Failed to capture video frame for programmatic submission." });
-                        }
-                    } else {
-                         toast({ variant: "destructive", title: "Capture Error", description: "Could not get canvas context for programmatic submission." });
-                    }
-                } else {
-                    toast({ variant: "destructive", title: "Camera Error", description: "Camera feed not ready for programmatic submission." });
-                }
-            } else {
-                 toast({ variant: "destructive", title: "Camera Required", description: "Camera access needed for programmatic submission." });
+          const AUTO_SUBMIT_DELAY = 2000; // 2 seconds
+          toast({
+            title: "New Selfie Received",
+            description: `Automatic verification will begin in ${AUTO_SUBMIT_DELAY / 1000} seconds.`,
+          });
+
+          setTimeout(() => {
+            // Programmatically submit the form
+            if (formRef.current) {
+               // Ensure CCTV frame is captured before submitting
+              const cctvHiddenInput = formRef.current.elements.namedItem('cctvDataUri') as HTMLInputElement | null;
+              if (hasCameraPermission && cctvVideoRef.current && cctvHiddenInput) {
+                  const videoElement = cctvVideoRef.current;
+                  if (videoElement.readyState >= videoElement.HAVE_ENOUGH_DATA && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = videoElement.videoWidth;
+                      canvas.height = videoElement.videoHeight;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                          try {
+                              cctvHiddenInput.value = canvas.toDataURL('image/webp');
+                               if (formRef.current) {
+                                  // Manually trigger form action state update with custom FormData
+                                  const formData = new FormData(formRef.current);
+                                  // Remove the file input "selfie" if programmatic one is used
+                                  if (data.selfieDataUri) formData.delete('selfie');
+                                  formAction(formData); // Directly invoke formAction
+                              }
+                          } catch (e) {
+                              toast({ variant: "destructive", title: "Capture Error", description: "Failed to capture video frame for programmatic submission." });
+                          }
+                      } else {
+                           toast({ variant: "destructive", title: "Capture Error", description: "Could not get canvas context for programmatic submission." });
+                      }
+                  } else {
+                      toast({ variant: "destructive", title: "Camera Error", description: "Camera feed not ready for programmatic submission." });
+                  }
+              } else {
+                   toast({ variant: "destructive", title: "Camera Required", description: "Camera access needed for programmatic submission." });
+              }
             }
-          }
+          }, AUTO_SUBMIT_DELAY);
         }
       } catch (error) {
         console.error("Error polling for latest selfie:", error);
