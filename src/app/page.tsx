@@ -137,39 +137,40 @@ export default function HomePage() {
           });
 
           setTimeout(() => {
-            // Programmatically submit the form
             if (formRef.current) {
-               // Ensure CCTV frame is captured before submitting
               const cctvHiddenInput = formRef.current.elements.namedItem('cctvDataUri') as HTMLInputElement | null;
-              if (hasCameraPermission && cctvVideoRef.current && cctvHiddenInput) {
-                  const videoElement = cctvVideoRef.current;
-                  if (videoElement.readyState >= videoElement.HAVE_ENOUGH_DATA && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-                      const canvas = document.createElement('canvas');
-                      canvas.width = videoElement.videoWidth;
-                      canvas.height = videoElement.videoHeight;
-                      const ctx = canvas.getContext('2d');
-                      if (ctx) {
-                          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                          try {
-                              cctvHiddenInput.value = canvas.toDataURL('image/webp');
-                               if (formRef.current) {
-                                  // Manually trigger form action state update with custom FormData
-                                  const formData = new FormData(formRef.current);
-                                  // Remove the file input "selfie" if programmatic one is used
-                                  if (data.selfieDataUri) formData.delete('selfie');
-                                  formAction(formData); // Directly invoke formAction
-                              }
-                          } catch (e) {
-                              toast({ variant: "destructive", title: "Capture Error", description: "Failed to capture video frame for programmatic submission." });
-                          }
-                      } else {
-                           toast({ variant: "destructive", title: "Capture Error", description: "Could not get canvas context for programmatic submission." });
+              const videoElement = cctvVideoRef.current;
+          
+              // Check the video element directly. If permission was granted, it will have a srcObject.
+              // Also check its readyState to make sure the stream is active.
+              if (videoElement && videoElement.srcObject && cctvHiddenInput) {
+                if (videoElement.readyState >= videoElement.HAVE_ENOUGH_DATA && videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = videoElement.videoWidth;
+                  canvas.height = videoElement.videoHeight;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                    try {
+                      cctvHiddenInput.value = canvas.toDataURL('image/webp');
+                      if (formRef.current) {
+                        const formData = new FormData(formRef.current);
+                        if (data.selfieDataUri) formData.delete('selfie');
+                        formAction(formData);
                       }
+                    } catch (e) {
+                      toast({ variant: "destructive", title: "Capture Error", description: "Failed to capture video frame for programmatic submission." });
+                    }
                   } else {
-                      toast({ variant: "destructive", title: "Camera Error", description: "Camera feed not ready for programmatic submission." });
+                    toast({ variant: "destructive", title: "Capture Error", description: "Could not get canvas context for programmatic submission." });
                   }
+                } else {
+                  // If srcObject exists but stream isn't ready, show a different error.
+                  toast({ variant: "destructive", title: "Camera Error", description: "Camera feed not ready for programmatic submission." });
+                }
               } else {
-                   toast({ variant: "destructive", title: "Camera Required", description: "Camera access needed for programmatic submission." });
+                // If srcObject doesn't exist, permission was likely denied or is pending.
+                toast({ variant: "destructive", title: "Camera Required", description: "Camera access needed for programmatic submission." });
               }
             }
           }, AUTO_SUBMIT_DELAY);
@@ -183,7 +184,7 @@ export default function HomePage() {
     intervalId = setInterval(fetchLatestSelfie, POLLING_INTERVAL);
 
     return () => clearInterval(intervalId);
-  }, [isPollingSelfie, lastProcessedRemoteSelfieUri, hasCameraPermission, toast, formAction]);
+  }, [isPollingSelfie, lastProcessedRemoteSelfieUri, toast, formAction]);
 
 
   const handleSelfieChange = (event: React.ChangeEvent<HTMLInputElement>) => {
